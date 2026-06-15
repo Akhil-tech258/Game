@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MEMO — Memory Card Match</title>
+<style>
+  /* ── TOKENS ─────────────────────────────────────── */
+  :root {
+    --bg:        #0d0f1a;
+    --surface:   #151829;
+    --glass:     rgba(255,255,255,0.05);
+    --glass-b:   rgba(255,255,255,0.10);
+    --border:    rgba(255,255,255,0.10);
+    --accent:    #7c5cfc;
+    --accent2:   #fc5c9c;
+    --accent3:   #5cf8fc;
+    --text:      #f0f2ff;
+    --text-sub:  #8890b0;
+    --card-back: linear-gradient(135deg,#7c5cfc,#fc5c9c);
+    --card-face: rgba(255,255,255,0.07);
+    --matched:   rgba(124,92,252,0.25);
+    --shadow:    0 8px 32px rgba(0,0,0,0.5);
+    --radius:    16px;
+    --radius-sm: 10px;
+    --flip-dur:  0.55s;
+  }
+  [data-theme="light"] {
+    --bg:        #f0f2ff;
+    --surface:   #ffffff;
+    --glass:     rgba(255,255,255,0.60);
+    --glass-b:   rgba(255,255,255,0.80);
+    --border:    rgba(100,80,200,0.15);
+    --text:      #1a1a2e;
+    --text-sub:  #5a5a8a;
+    --card-back: linear-gradient(135deg,#7c5cfc,#fc5c9c);
+    --card-face: rgba(255,255,255,0.9);
+    --matched:   rgba(124,92,252,0.18);
+    --shadow:    0 8px 32px rgba(100,80,200,0.18);
+  }
+
+  /* ── RESET & BASE ───────────────────────────────── */
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{font-size:16px;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
+    overflow-x:hidden;
+    transition:background .4s,color .4s;
+  }
+  button{cursor:pointer;border:none;background:none;color:inherit;font:inherit}
+  svg{pointer-events:none}
+
+  /* ── NOISE OVERLAY ──────────────────────────────── */
+  body::before{
+    content:'';position:fixed;inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events:none;z-index:0;opacity:.5;
+  }
+
+  /* ── CANVAS (particles) ─────────────────────────── */
+  #particleCanvas{position:fixed;inset:0;pointer-events:none;z-index:1}
+
+  /* ── LAYOUT ─────────────────────────────────────── */
+  #app{position:relative;z-index:2;min-height:100vh;display:flex;flex-direction:column}
+
+  /* ── HEADER ─────────────────────────────────────── */
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 24px;
+    background:var(--glass);
+    backdrop-filter:blur(20px);
+    border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:50;
+  }
+  .logo{
+    font-size:1.5rem;font-weight:900;letter-spacing:-1px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+  .logo span{font-weight:300;opacity:.6}
+  .header-actions{display:flex;gap:8px;align-items:center}
+  .icon-btn{
+    width:38px;height:38px;border-radius:10px;
+    background:var(--glass-b);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    transition:all .2s;font-size:1rem;
+  }
+  .icon-btn:hover{background:var(--accent);border-color:var(--accent)}
+
+  /* ── SCREENS ─────────────────────────────────────── */
+  .screen{display:none;flex-direction:column;align-items:center;flex:1;padding:24px 16px}
+  .screen.active{display:flex}
+
+  /* ── HOME SCREEN ─────────────────────────────────── */
+  #homeScreen{gap:24px;padding-top:32px}
+  .hero{text-align:center;margin-bottom:8px}
+  .hero h1{font-size:clamp(2rem,6vw,3.5rem);font-weight:900;line-height:1.1;letter-spacing:-2px}
+  .hero h1 .gradient{
+    background:linear-gradient(135deg,var(--accent),var(--accent2),var(--accent3));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  }
+  .hero p{color:var(--text-sub);margin-top:8px;font-size:1rem}
+
+  .section-label{
+    font-size:.7rem;font-weight:700;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--text-sub);margin-bottom:10px;
+  }
+
+  .home-panel{
+    width:100%;max-width:480px;
+    background:var(--glass);
+    backdrop-filter:blur(16px);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:20px;
+  }
+
+  /* Mode selector */
+  .mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .mode-card{
+    padding:14px 12px;border-radius:var(--radius-sm);
+    border:2px solid var(--border);
+    background:var(--glass);
+    display:flex;flex-direction:column;gap:4px;
+    transition:all .2s;text-align:left;
+  }
+  .mode-card:hover{border-color:var(--accent);background:rgba(124,92,252,.1)}
+  .mode-card.selected{border-color:var(--accent);background:rgba(124,92,252,.15)}
+  .mode-card .mode-icon{font-size:1.4rem}
+  .mode-card .mode-name{font-weight:700;font-size:.9rem}
+  .mode-card .mode-desc{font-size:.72rem;color:var(--text-sub)}
+  .mode-card .mode-badge{
+    display:inline-block;font-size:.6rem;font-weight:700;padding:2px 6px;
+    border-radius:20px;background:var(--accent);color:#fff;width:fit-content;margin-top:2px;
+  }
+
+  /* Theme selector */
+  .theme-scroll{
+    display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;
+    scrollbar-width:none;
+  }
+  .theme-scroll::-webkit-scrollbar{display:none}
+  .theme-chip{
+    flex-shrink:0;padding:8px 14px;border-radius:20px;
+    border:2px solid var(--border);background:var(--glass);
+    font-size:.8rem;font-weight:600;transition:all .2s;white-space:nowrap;
+  }
+  .theme-chip:hover{border-color:var(--accent)}
+  .theme-chip.selected{border-color:var(--accent);background:rgba(124,92,252,.2);color:var(--accent)}
+
+  /* Big start button */
+  .btn-primary{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    width:100%;padding:16px;border-radius:var(--radius-sm);
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#fff;font-weight:800;font-size:1rem;letter-spacing:.5px;
+    box-shadow:0 4px 24px rgba(124,92,252,.4);
+    transition:transform .15s,box-shadow .15s;
+  }
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(124,92,252,.5)}
+  .btn-primary:active{transform:translateY(0)}
+
+  .btn-secondary{
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    padding:10px 18px;border-radius:var(--radius-sm);
+    background:var(--glass-b);border:1px solid var(--border);
+    font-weight:600;font-size:.85rem;transition:all .2s;
+  }
+  .btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* Stats row on home */
+  .stats-row{display:flex;gap:10px;width:100%;max-width:480px}
+  .stat-card{
+    flex:1;padding:14px;border-radius:var(--radius-sm);
+    background:var(--glass);border:1px solid var(--border);
+    text-align:center;
+  }
+  .stat-card .val{font-size:1.4rem;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .stat-card .lbl{font-size:.68rem;color:var(--text-sub);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+
+  /* Profile row */
+  .profile-row{
+    display:flex;align-items:center;gap:12px;
+    padding:14px;border-radius:var(--radius-sm);
+    background:var(--glass);border:1px solid var(--border);
+    width:100%;max-width:480px;
+  }
+  .avatar{
+    width:42px;height:42px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;
+    font-size:1.2rem;flex-shrink:0;
+  }
+  .profile-info{flex:1}
+  .profile-name{font-weight:700;font-size:.9rem}
+  .profile-sub{font-size:.72rem;color:var(--text-sub)}
+  .xp-bar-wrap{height:4px;border-radius:2px;background:var(--glass-b);margin-top:4px;overflow:hidden}
+  .xp-bar{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .6s ease}
+
+  /* ── GAME SCREEN ─────────────────────────────────── */
+  #gameScreen{gap:0;padding:0}
+
+  /* Hud */
+  .hud{
+    display:flex;align-items:center;gap:8px;
+    padding:12px 16px;
+    background:var(--glass);
+    backdrop-filter:blur(16px);
+    border-bottom:1px solid var(--border);
+    width:100%;flex-wrap:wrap;
+  }
+  .hud-stat{
+    display:flex;flex-direction:column;align-items:center;
+    padding:6px 12px;border-radius:var(--radius-sm);
+    background:var(--glass-b);border:1px solid var(--border);
+    min-width:60px;
+  }
+  .hud-stat .val{font-size:1rem;font-weight:800;line-height:1}
+  .hud-stat .lbl{font-size:.58rem;color:var(--text-sub);font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+  .hud-timer .val{color:var(--accent3)}
+  .hud-moves .val{color:var(--accent)}
+  .hud-score .val{color:var(--accent2)}
+  .hud-combo{
+    padding:4px 10px;border-radius:20px;font-size:.75rem;font-weight:700;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#fff;display:none;
+  }
+  .hud-combo.show{display:block;animation:pop .3s ease}
+  @keyframes pop{0%{transform:scale(0.5)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+  .hud-actions{display:flex;gap:6px;margin-left:auto}
+  .hud-btn{
+    padding:6px 12px;border-radius:var(--radius-sm);font-size:.78rem;font-weight:700;
+    background:var(--glass-b);border:1px solid var(--border);
+    display:flex;align-items:center;gap:4px;transition:all .2s;
+  }
+  .hud-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .hud-btn.danger:hover{border-color:var(--accent2);color:var(--accent2)}
+
+  /* Board */
+  .board-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:16px;width:100%}
+  .board{
+    display:grid;gap:8px;
+    width:100%;max-width:600px;
+    --cols:4;
+  }
+  .board.easy{--cols:4}
+  .board.medium{--cols:6}
+  .board.hard{--cols:8}
+  .board{grid-template-columns:repeat(var(--cols),1fr)}
+
+  /* Card */
+  .card{
+    aspect-ratio:1;perspective:800px;cursor:pointer;
+    border-radius:var(--radius-sm);
+    transition:transform .1s;
+  }
+  .card:hover:not(.flipped):not(.matched){transform:scale(1.05)}
+  .card.matched{cursor:default}
+  .card-inner{
+    width:100%;height:100%;position:relative;
+    transform-style:preserve-3d;
+    transition:transform var(--flip-dur) cubic-bezier(.4,0,.2,1);
+    border-radius:var(--radius-sm);
+  }
+  .card.flipped .card-inner,.card.matched .card-inner{transform:rotateY(180deg)}
+  .card-face,.card-back{
+    position:absolute;inset:0;border-radius:var(--radius-sm);
+    display:flex;align-items:center;justify-content:center;
+    backface-visibility:hidden;-webkit-backface-visibility:hidden;
+    overflow:hidden;
+  }
+  .card-back{
+    background:var(--card-back);
+    border:2px solid rgba(255,255,255,0.1);
+    box-shadow:var(--shadow);
+  }
+  .card-back-pattern{
+    position:absolute;inset:0;
+    background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.04) 0,rgba(255,255,255,.04) 1px,transparent 0,transparent 50%);
+    background-size:8px 8px;
+  }
+  .card-back-logo{font-size:1.5rem;opacity:.4;position:relative}
+  .card-face{
+    transform:rotateY(180deg);
+    background:var(--card-face);
+    border:2px solid var(--border);
+    backdrop-filter:blur(8px);
+    font-size:clamp(1.2rem,4vw,2rem);
+    flex-direction:column;gap:2px;
+    box-shadow:var(--shadow);
+  }
+  .card.matched .card-face{
+    background:var(--matched);
+    border-color:var(--accent);
+    box-shadow:0 0 16px rgba(124,92,252,.35);
+  }
+  .card.matched .card-face::after{
+    content:'✓';position:absolute;top:4px;right:6px;
+    font-size:.6rem;color:var(--accent);font-weight:900;
+  }
+  .card.hint-glow .card-back{animation:hintGlow 0.8s ease 2}
+  @keyframes hintGlow{0%,100%{box-shadow:var(--shadow)}50%{box-shadow:0 0 24px var(--accent3),0 0 48px var(--accent3)}}
+
+  /* Memory countdown banner */
+  .memory-banner{
+    display:none;width:100%;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#fff;text-align:center;padding:10px;
+    font-weight:800;font-size:.9rem;letter-spacing:.05em;
+  }
+  .memory-banner.show{display:block}
+  .countdown-ring{display:inline-block;width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.4);vertical-align:middle;margin-left:6px;position:relative}
+  .countdown-ring::after{content:attr(data-t);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:900}
+
+  /* Pause overlay */
+  .overlay{
+    display:none;position:fixed;inset:0;
+    background:rgba(0,0,0,.7);backdrop-filter:blur(8px);
+    z-index:100;align-items:center;justify-content:center;
+  }
+  .overlay.show{display:flex}
+  .overlay-card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:20px;padding:32px;width:min(360px,92vw);
+    text-align:center;animation:slideUp .3s ease;
+  }
+  @keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .overlay-icon{font-size:3rem;margin-bottom:12px}
+  .overlay-title{font-size:1.4rem;font-weight:900;margin-bottom:6px}
+  .overlay-sub{color:var(--text-sub);font-size:.85rem;margin-bottom:24px}
+  .overlay-actions{display:flex;flex-direction:column;gap:10px}
+
+  /* Win stats grid */
+  .win-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0}
+  .win-stat{padding:12px;border-radius:var(--radius-sm);background:var(--glass);border:1px solid var(--border);text-align:center}
+  .win-stat .v{font-size:1.3rem;font-weight:900;color:var(--accent)}
+  .win-stat .l{font-size:.68rem;color:var(--text-sub);text-transform:uppercase;letter-spacing:.08em}
+  .star-row{display:flex;justify-content:center;gap:6px;margin:8px 0;font-size:1.8rem}
+
+  /* Achievements */
+  .achievements-list{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:8px 0}
+  .badge{
+    padding:6px 12px;border-radius:20px;font-size:.75rem;font-weight:700;
+    border:1.5px solid var(--border);display:flex;align-items:center;gap:4px;
+    background:var(--glass);
+  }
+  .badge.earned{border-color:var(--accent);background:rgba(124,92,252,.15);color:var(--accent)}
+
+  /* ── STATS SCREEN ─────────────────────────────────── */
+  #statsScreen{padding:24px 16px;gap:20px;align-items:center}
+  .stats-header{text-align:center}
+  .stats-header h2{font-size:1.6rem;font-weight:900}
+  .stats-header p{color:var(--text-sub);font-size:.85rem;margin-top:4px}
+  .stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;width:100%;max-width:480px}
+  .stat-big{
+    padding:20px;border-radius:var(--radius);
+    background:var(--glass);border:1px solid var(--border);
+    text-align:center;
+  }
+  .stat-big .icon{font-size:1.6rem;margin-bottom:6px}
+  .stat-big .v{font-size:1.6rem;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .stat-big .l{font-size:.72rem;color:var(--text-sub);text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+
+  .leaderboard{width:100%;max-width:480px}
+  .lb-row{
+    display:flex;align-items:center;gap:12px;padding:12px 16px;
+    border-radius:var(--radius-sm);border:1px solid var(--border);
+    background:var(--glass);margin-bottom:8px;
+  }
+  .lb-rank{font-size:1rem;font-weight:900;width:24px;text-align:center}
+  .lb-rank.gold{color:#fbbf24}
+  .lb-rank.silver{color:#94a3b8}
+  .lb-rank.bronze{color:#f97316}
+  .lb-info{flex:1}
+  .lb-name{font-weight:700;font-size:.9rem}
+  .lb-meta{font-size:.72rem;color:var(--text-sub)}
+  .lb-score{font-weight:900;font-size:1rem;color:var(--accent)}
+
+  /* ── PROFILES SCREEN ──────────────────────────────── */
+  #profilesScreen{gap:20px;max-width:480px;margin:auto;width:100%}
+  #profilesScreen h2{font-size:1.4rem;font-weight:900;text-align:center}
+  .profile-card{
+    display:flex;align-items:center;gap:12px;padding:16px;
+    border-radius:var(--radius);border:2px solid var(--border);
+    background:var(--glass);cursor:pointer;transition:all .2s;
+  }
+  .profile-card:hover{border-color:var(--accent)}
+  .profile-card.active-profile{border-color:var(--accent);background:rgba(124,92,252,.1)}
+  .profile-card.add-profile{justify-content:center;border-style:dashed;color:var(--text-sub)}
+  .profile-card.add-profile:hover{color:var(--accent)}
+  .profile-detail{flex:1}
+  .profile-detail .name{font-weight:700}
+  .profile-detail .meta{font-size:.72rem;color:var(--text-sub)}
+  .profile-check{color:var(--accent);font-size:1.2rem}
+
+  /* ── SETTINGS ─────────────────────────────────────── */
+  #settingsScreen{gap:16px;max-width:480px;margin:auto;width:100%}
+  #settingsScreen h2{font-size:1.4rem;font-weight:900;text-align:center}
+  .setting-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;border-radius:var(--radius-sm);
+    background:var(--glass);border:1px solid var(--border);
+  }
+  .setting-info .title{font-weight:600;font-size:.9rem}
+  .setting-info .desc{font-size:.72rem;color:var(--text-sub);margin-top:2px}
+  .toggle{
+    width:44px;height:24px;border-radius:12px;
+    background:var(--glass-b);border:1px solid var(--border);
+    position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;
+  }
+  .toggle.on{background:var(--accent);border-color:var(--accent)}
+  .toggle::after{
+    content:'';position:absolute;top:2px;left:2px;
+    width:18px;height:18px;border-radius:50%;background:#fff;
+    transition:left .2s;
+  }
+  .toggle.on::after{left:22px}
+
+  /* ── NAV TABS ─────────────────────────────────────── */
+  .bottom-nav{
+    display:flex;background:var(--glass);backdrop-filter:blur(20px);
+    border-top:1px solid var(--border);position:sticky;bottom:0;z-index:50;
+  }
+  .nav-tab{
+    flex:1;padding:10px 4px 12px;display:flex;flex-direction:column;
+    align-items:center;gap:3px;font-size:.6rem;font-weight:700;
+    text-transform:uppercase;letter-spacing:.07em;color:var(--text-sub);
+    transition:color .2s;border-top:2px solid transparent;
+  }
+  .nav-tab .tab-icon{font-size:1.2rem}
+  .nav-tab.active{color:var(--accent);border-top-color:var(--accent)}
+
+  /* ── CONFETTI ─────────────────────────────────────── */
+  .confetti-piece{
+    position:fixed;top:-10px;pointer-events:none;z-index:200;
+    width:8px;height:8px;border-radius:2px;
+    animation:confettiFall linear forwards;
+  }
+  @keyframes confettiFall{
+    0%{transform:translateY(0) rotate(0deg);opacity:1}
+    100%{transform:translateY(100vh) rotate(720deg);opacity:0}
+  }
+
+  /* ── TOAST ─────────────────────────────────────────── */
+  #toast{
+    position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+    background:var(--surface);border:1px solid var(--border);
+    padding:10px 20px;border-radius:20px;font-size:.85rem;font-weight:600;
+    box-shadow:var(--shadow);z-index:300;
+    opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;
+  }
+  #toast.show{opacity:1}
+
+  /* ── DAILY CHALLENGE BADGE ───────────────────────── */
+  .daily-badge{
+    display:flex;align-items:center;gap:10px;
+    padding:12px 16px;border-radius:var(--radius-sm);
+    background:linear-gradient(135deg,rgba(124,92,252,.15),rgba(252,92,156,.15));
+    border:1px solid rgba(124,92,252,.3);
+    width:100%;max-width:480px;cursor:pointer;transition:all .2s;
+  }
+  .daily-badge:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .daily-badge .daily-icon{font-size:1.4rem}
+  .daily-badge .daily-info .title{font-weight:700;font-size:.9rem;color:var(--accent)}
+  .daily-badge .daily-info .sub{font-size:.72rem;color:var(--text-sub)}
+  .daily-badge .daily-arrow{margin-left:auto;color:var(--accent);font-size:1.1rem}
+
+  /* ── RESPONSIVE ─────────────────────────────────────── */
+  @media(max-width:480px){
+    .board{gap:6px}
+    .hud{padding:8px 12px;gap:5px}
+    .hud-stat{padding:5px 8px;min-width:48px}
+    .hud-stat .val{font-size:.9rem}
+    .hud-btn{padding:5px 8px;font-size:.72rem}
+    .card-face{font-size:clamp(1rem,5vw,1.8rem)}
+  }
+  @media(min-width:768px){
+    .board{max-width:720px;gap:12px}
+    .board-wrap{padding:24px}
+  }
+
+  /* ── MICRO-INTERACTIONS ─────────────────────────────── */
+  .shake{animation:shake .4s ease}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+  .bounce-in{animation:bounceIn .5s cubic-bezier(.175,.885,.32,1.275)}
+  @keyframes bounceIn{from{transform:scale(0.5);opacity:0}to{transform:scale(1);opacity:1}}
+
+  /* Hint costs display */
+  .hint-count{
+    display:inline-flex;align-items:center;gap:3px;
+    font-size:.65rem;padding:2px 6px;border-radius:8px;
+    background:rgba(124,92,252,.2);color:var(--accent);font-weight:700;
+  }
+</style>
+</head>
+<body>
+<canvas id="particleCanvas"></canvas>
+<div id="toast"></div>
+
+<!-- PAUSE OVERLAY -->
+<div class="overlay" id="pauseOverlay">
+  <div class="overlay-card">
+    <div class="overlay-icon">⏸️</div>
+    <div class="overlay-title">Game Paused</div>
+    <div class="overlay-sub">Take a breath — your progress is saved.</div>
+    <div class="overlay-actions">
+      <button class="btn-primary" onclick="resumeGame()">▶ Resume</button>
+      <button class="btn-secondary" onclick="restartGame()">↺ Restart</button>
+      <button class="btn-secondary" onclick="goHome()">🏠 Home</button>
+    </div>
+  </div>
+</div>
+
+<!-- WIN OVERLAY -->
+<div class="overlay" id="winOverlay">
+  <div class="overlay-card">
+    <div class="overlay-icon">🏆</div>
+    <div class="overlay-title">You Won!</div>
+    <div class="star-row" id="winStars"></div>
+    <div class="win-stats" id="winStats"></div>
+    <div class="achievements-list" id="winBadges"></div>
+    <div class="overlay-actions" style="margin-top:8px">
+      <button class="btn-primary" onclick="restartGame()">▶ Play Again</button>
+      <button class="btn-secondary" onclick="goHome()">🏠 Menu</button>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="logo">MEMO<span>.gg</span></div>
+    <div class="header-actions">
+      <button class="icon-btn" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">🌙</button>
+      <button class="icon-btn" onclick="toggleSound()" title="Toggle sound" id="soundBtn">🔊</button>
+      <button class="icon-btn" onclick="showTab('profilesScreen')" title="Profiles">👤</button>
+    </div>
+  </header>
+
+  <!-- ══ HOME ══ -->
+  <div class="screen active" id="homeScreen">
+    <div class="hero">
+      <h1>Train Your<br><span class="gradient">Memory.</span></h1>
+      <p>Flip cards, find pairs, beat your best.</p>
+    </div>
+
+    <div class="profile-row" id="profileRowHome">
+      <div class="avatar" id="homeAvatar">🧠</div>
+      <div class="profile-info">
+        <div class="profile-name" id="homeProfileName">Player</div>
+        <div class="profile-sub" id="homeProfileSub">Level 1 · 0 XP</div>
+        <div class="xp-bar-wrap"><div class="xp-bar" id="homeXpBar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="val" id="hs-games">0</div><div class="lbl">Played</div></div>
+      <div class="stat-card"><div class="val" id="hs-wr">0%</div><div class="lbl">Win Rate</div></div>
+      <div class="stat-card"><div class="val" id="hs-best">—</div><div class="lbl">Best Time</div></div>
+    </div>
+
+    <div class="daily-badge" onclick="startDaily()">
+      <div class="daily-icon">📅</div>
+      <div class="daily-info">
+        <div class="title">Daily Challenge</div>
+        <div class="sub" id="dailySub">Play today's special puzzle</div>
+      </div>
+      <div class="daily-arrow">›</div>
+    </div>
+
+    <div class="home-panel">
+      <div class="section-label">Mode</div>
+      <div class="mode-grid">
+        <button class="mode-card selected" data-mode="easy" onclick="selectMode(this)">
+          <div class="mode-icon">🌱</div>
+          <div class="mode-name">Easy</div>
+          <div class="mode-desc">4×4 grid · 8 pairs</div>
+          <div class="mode-badge">Beginner</div>
+        </button>
+        <button class="mode-card" data-mode="medium" onclick="selectMode(this)">
+          <div class="mode-icon">🔥</div>
+          <div class="mode-name">Medium</div>
+          <div class="mode-desc">6×6 grid · 18 pairs</div>
+          <div class="mode-badge">Challenge</div>
+        </button>
+        <button class="mode-card" data-mode="hard" onclick="selectMode(this)">
+          <div class="mode-icon">💀</div>
+          <div class="mode-name">Hard</div>
+          <div class="mode-desc">8×8 grid · 32 pairs</div>
+          <div class="mode-badge">Expert</div>
+        </button>
+        <button class="mode-card" data-mode="master" onclick="selectMode(this)">
+          <div class="mode-icon">🧠</div>
+          <div class="mode-name">Master</div>
+          <div class="mode-desc">Memorize in 5s</div>
+          <div class="mode-badge" style="background:var(--accent2)">Memory</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="home-panel">
+      <div class="section-label">Card Theme</div>
+      <div class="theme-scroll" id="themeScroll">
+        <button class="theme-chip selected" data-theme-name="emoji" onclick="selectTheme(this)">😀 Emoji</button>
+        <button class="theme-chip" data-theme-name="animals" onclick="selectTheme(this)">🐶 Animals</button>
+        <button class="theme-chip" data-theme-name="fruits" onclick="selectTheme(this)">🍎 Fruits</button>
+        <button class="theme-chip" data-theme-name="vehicles" onclick="selectTheme(this)">🚗 Vehicles</button>
+        <button class="theme-chip" data-theme-name="tech" onclick="selectTheme(this)">💻 Tech</button>
+        <button class="theme-chip" data-theme-name="space" onclick="selectTheme(this)">🚀 Space</button>
+        <button class="theme-chip" data-theme-name="food" onclick="selectTheme(this)">🍕 Food</button>
+        <button class="theme-chip" data-theme-name="sports" onclick="selectTheme(this)">⚽ Sports</button>
+      </div>
+    </div>
+
+    <button class="btn-primary" style="width:100%;max-width:480px" onclick="startGame()">
+      <span>▶</span> Start Game
+    </button>
+  </div>
+
+  <!-- ══ GAME ══ -->
+  <div class="screen" id="gameScreen">
+    <div class="memory-banner" id="memoryBanner">
+      🧠 Memorize! Cards hide in <span class="countdown-ring" id="countdownRing" data-t="5"></span>
+    </div>
+    <div class="hud">
+      <div class="hud-stat hud-timer"><div class="val" id="timerVal">0:00</div><div class="lbl">Time</div></div>
+      <div class="hud-stat hud-moves"><div class="val" id="movesVal">0</div><div class="lbl">Moves</div></div>
+      <div class="hud-stat hud-score"><div class="val" id="scoreVal">0</div><div class="lbl">Score</div></div>
+      <div class="hud-combo" id="comboEl">×1 Combo!</div>
+      <div class="hud-actions">
+        <button class="hud-btn" onclick="useHint()" id="hintBtn">💡 <span class="hint-count" id="hintCount">3</span></button>
+        <button class="hud-btn" onclick="pauseGame()">⏸</button>
+        <button class="hud-btn danger" onclick="confirmRestart()">↺</button>
+      </div>
+    </div>
+    <div class="board-wrap">
+      <div class="board easy" id="board"></div>
+    </div>
+  </div>
+
+  <!-- ══ STATS ══ -->
+  <div class="screen" id="statsScreen">
+    <div class="stats-header">
+      <h2>📊 Statistics</h2>
+      <p>Your memory journey at a glance</p>
+    </div>
+    <div class="stats-grid" id="statsGrid"></div>
+    <div class="section-label" style="width:100%;max-width:480px">Top Scores</div>
+    <div class="leaderboard" id="leaderboard"></div>
+    <div class="achievements-list" id="allBadges" style="max-width:480px"></div>
+  </div>
+
+  <!-- ══ PROFILES ══ -->
+  <div class="screen" id="profilesScreen">
+    <h2>👤 Profiles</h2>
+    <div id="profilesList"></div>
+    <button class="btn-secondary" onclick="addProfile()" style="width:100%">+ New Profile</button>
+  </div>
+
+  <!-- ══ SETTINGS ══ -->
+  <div class="screen" id="settingsScreen">
+    <h2>⚙️ Settings</h2>
+    <div class="setting-row">
+      <div class="setting-info"><div class="title">Sound Effects</div><div class="desc">Card flip & match sounds</div></div>
+      <div class="toggle" id="sfxToggle" onclick="toggleSetting('sfx',this)"></div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><div class="title">Animations</div><div class="desc">Card flip & confetti</div></div>
+      <div class="toggle on" id="animToggle" onclick="toggleSetting('anim',this)"></div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><div class="title">Particles</div><div class="desc">Background particle effects</div></div>
+      <div class="toggle on" id="particlesToggle" onclick="toggleSetting('particles',this)"></div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><div class="title">Dark Mode</div><div class="desc">Switch to light theme</div></div>
+      <div class="toggle on" id="themeToggle" onclick="toggleTheme()"></div>
+    </div>
+    <button class="btn-secondary" onclick="clearData()" style="width:100%;color:var(--accent2)">🗑 Clear All Data</button>
+    <div style="text-align:center;color:var(--text-sub);font-size:.72rem">MEMO v2.0 · Offline · No ads · No tracking</div>
+  </div>
+
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-tab active" onclick="showTab('homeScreen')" id="tab-home">
+      <span class="tab-icon">🏠</span>Home
+    </button>
+    <button class="nav-tab" onclick="showTab('statsScreen')" id="tab-stats">
+      <span class="tab-icon">📊</span>Stats
+    </button>
+    <button class="nav-tab" onclick="showTab('profilesScreen')" id="tab-profiles">
+      <span class="tab-icon">👤</span>Profiles
+    </button>
+    <button class="nav-tab" onclick="showTab('settingsScreen')" id="tab-settings">
+      <span class="tab-icon">⚙️</span>Settings
+    </button>
+  </nav>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  DATA & THEMES
+// ══════════════════════════════════════════
+const THEMES = {
+  emoji:    ['😀','😂','🥰','😎','🤩','😜','🤯','🥳','🙈','🤖','👻','🐙','🦊','🌈','⭐','💎','🎯','🎮','🎲','🎵','🌺','🍀','🌙','💫','🔮','🎪','🦋','🌊','🎭','🎨','🏆','🎸'],
+  animals:  ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐸','🐵','🦄','🦋','🐝','🦜','🦩','🐬','🦋','🐙','🦑','🦀','🐡','🦔','🦦','🦥','🐿️','🦘','🦙','🦛','🦏'],
+  fruits:   ['🍎','🍊','🍋','🍇','🍓','🫐','🍑','🍒','🥭','🍍','🥥','🍌','🍉','🍈','🍐','🍏','🥝','🍅','🫒','🥑','🍆','🌽','🥕','🧅','🥔','🍠','🥦','🥬','🥒','🫑','🍄','🌶️'],
+  vehicles: ['🚗','🚕','🚙','🚌','🏎️','🚓','🚑','🚒','🚚','🚛','🏍️','✈️','🚀','🛸','🚁','🛥️','🚢','🚂','🚊','🛺','🚲','🛵','🦽','⛵','🛶','🚤','🛳️','🚡','🚠','🚟','🛻','🏗️'],
+  tech:     ['💻','📱','⌨️','🖥️','🖨️','🖱️','💾','💿','📀','📷','📸','📹','🎥','📡','🔭','🔬','🧬','🤖','🦾','💡','🔋','🔌','📺','📻','🎙️','🎚️','🎛️','📠','☎️','📟','🔊','📡'],
+  space:    ['🚀','🛸','🌍','🌕','⭐','🌟','💫','☄️','🪐','🌌','🔭','👨‍🚀','🛰️','🌑','🌒','🌓','🌔','🌙','🌛','🌜','🌞','⚡','🌠','🌃','🌆','🌇','🌉','🎇','🎆','🌁','🌅','🌄'],
+  food:     ['🍕','🍔','🌮','🌯','🥙','🥗','🍝','🍜','🍲','🥘','🍛','🍣','🍱','🥡','🍤','🍙','🍘','🍥','🥮','🍡','🥟','🦪','🍦','🍧','🍨','🍰','🎂','🍮','🍭','🍬','🍫','🍿'],
+  sports:   ['⚽','🏀','🏈','⚾','🎾','🏐','🏉','🥏','🏓','🏸','🏒','🥍','🏑','🏏','🎿','⛷️','🏂','🤸','🤼','🥊','🏋️','🤺','🎯','🎳','🏇','⛸️','🛷','🎱','🏄','🤽','🚣','🧗']
+};
+
+const MODE_CONFIG = {
+  easy:   { cols:4, pairs:8,  label:'Easy',   xp:100, timeBonus:120 },
+  medium: { cols:6, pairs:18, label:'Medium',  xp:250, timeBonus:240 },
+  hard:   { cols:8, pairs:32, label:'Hard',    xp:500, timeBonus:480 },
+  master: { cols:4, pairs:8,  label:'Master',  xp:200, timeBonus:120, memory:true }
+};
+
+const ACHIEVEMENTS = [
+  { id:'first_win',  icon:'🏅', name:'First Win',      desc:'Win your first game',              check: s => s.gamesWon >= 1 },
+  { id:'speed_5',    icon:'⚡', name:'Speed Demon',     desc:'Win Easy in under 30s',            check: (s,g) => g.mode==='easy' && g.time<=30 },
+  { id:'perfect',    icon:'💎', name:'Perfect Game',    desc:'Win with no wrong matches',        check: (s,g) => g.wrongMoves===0 },
+  { id:'streak_3',   icon:'🔥', name:'Hot Streak',      desc:'Match 3 pairs in a row',           check: (s,g) => g.maxCombo >= 3 },
+  { id:'master_win', icon:'🧠', name:'Mind Palace',     desc:'Win Memory Master mode',           check: (s,g) => g.mode==='master' },
+  { id:'played_10',  icon:'🎯', name:'Dedicated',       desc:'Play 10 games',                    check: s => s.gamesPlayed >= 10 },
+  { id:'hard_win',   icon:'💀', name:'Skull Crusher',   desc:'Win Hard mode',                    check: (s,g) => g.mode==='hard' },
+  { id:'no_hint',    icon:'🦉', name:'Wise Owl',        desc:'Win without using hints',          check: (s,g) => g.hintsUsed===0 },
+];
+
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let G = {
+  // Game state
+  mode: 'easy', theme: 'emoji', cards: [], flipped: [], matched: 0,
+  moves: 0, wrongMoves: 0, score: 0, combo: 0, maxCombo: 0,
+  hints: 3, hintsUsed: 0, paused: false, running: false,
+  timerSec: 0, timerInterval: null, memorizing: false,
+  // Settings
+  sfx: true, anim: true, particles: true, darkMode: true,
+  // Current profile index
+  profileIdx: 0,
+};
+
+let DATA = loadData();
+
+function loadData() {
+  try {
+    return JSON.parse(localStorage.getItem('memo_data')) || defaultData();
+  } catch { return defaultData(); }
+}
+
+function defaultData() {
+  return {
+    profiles: [{ name:'Player', avatar:'🧠', xp:0, level:1, gamesPlayed:0, gamesWon:0, bestTime:null, totalMoves:0, achievements:[], highScores:[] }],
+    activeProfile: 0,
+    settings: { sfx:true, anim:true, particles:true, dark:true },
+    daily: { lastDate:'', completed:false }
+  };
+}
+
+function save() { localStorage.setItem('memo_data', JSON.stringify(DATA)); }
+function profile() { return DATA.profiles[DATA.activeProfile]; }
+
+// ══════════════════════════════════════════
+//  AUDIO (Web Audio API, no files needed)
+// ══════════════════════════════════════════
+let audioCtx;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function beep(freq, dur=0.1, type='sine', vol=0.15) {
+  if (!G.sfx) return;
+  try {
+    const ctx = getAudio();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = freq; o.type = type;
+    g.gain.setValueAtTime(vol, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+    o.start(); o.stop(ctx.currentTime + dur);
+  } catch(e){}
+}
+function playFlip()  { beep(400, 0.08, 'triangle', 0.1) }
+function playMatch() { beep(523, 0.1); setTimeout(()=>beep(659,0.1),80); setTimeout(()=>beep(784,0.15),160) }
+function playWrong() { beep(200, 0.2, 'sawtooth', 0.08) }
+function playWin()   { [523,659,784,1047].forEach((f,i)=>setTimeout(()=>beep(f,0.3),i*120)) }
+function playHint()  { beep(800, 0.15, 'triangle', 0.12) }
+
+// ══════════════════════════════════════════
+//  PARTICLES
+// ══════════════════════════════════════════
+const cvs = document.getElementById('particleCanvas');
+const ctx2 = cvs.getContext('2d');
+let particles = [];
+function resizeCvs() { cvs.width=innerWidth; cvs.height=innerHeight; }
+resizeCvs(); addEventListener('resize', resizeCvs);
+
+function spawnParticles() {
+  if (!G.particles) return;
+  for (let i=0; i<60; i++) particles.push({
+    x: Math.random()*innerWidth, y: Math.random()*innerHeight,
+    vx:(Math.random()-.5)*.3, vy:(Math.random()-.5)*.3,
+      r: Math.random()*1.5+.5,
+    a: Math.random(), da:-0.001-Math.random()*.002,
+    c: ['#7c5cfc','#fc5c9c','#5cf8fc'][Math.floor(Math.random()*3)]
+  });
+}
+spawnParticles();
+
+function animateParticles() {
+  ctx2.clearRect(0,0,cvs.width,cvs.height);
+  if (!G.particles) { requestAnimationFrame(animateParticles); return; }
+  particles = particles.filter(p=>p.a>0);
+  if (particles.length < 40) spawnParticles();
+  particles.forEach(p=>{
+    p.x+=p.vx; p.y+=p.vy; p.a+=p.da;
+    ctx2.beginPath();
+    ctx2.arc(p.x,p.y,p.r,0,Math.PI*2);
+    ctx2.fillStyle=p.c+'66'; ctx2.fill();
+  });
+  requestAnimationFrame(animateParticles);
+}
+animateParticles();
+
+// ══════════════════════════════════════════
+//  CONFETTI
+// ══════════════════════════════════════════
+function launchConfetti() {
+  if (!G.anim) return;
+  const colors = ['#7c5cfc','#fc5c9c','#5cf8fc','#fbbf24','#34d399'];
+  for (let i=0; i<120; i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti-piece';
+    el.style.cssText = `left:${Math.random()*100}vw;background:${colors[i%colors.length]};
+      width:${Math.random()*8+4}px;height:${Math.random()*8+4}px;
+      animation-duration:${Math.random()*2+1.5}s;
+      animation-delay:${Math.random()*.8}s;
+      border-radius:${Math.random()<.5?'50%':'2px'}`;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(), 3500);
+  }
+}
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+let toastTimer;
+function toast(msg, dur=2000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), dur);
+}
+
+// ══════════════════════════════════════════
+//  NAV
+// ══════════════════════════════════════════
+function showTab(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const tabId = 'tab-' + id.replace('Screen','');
+  if (document.getElementById(tabId)) document.getElementById(tabId).classList.add('active');
+  if (id === 'statsScreen') renderStats();
+  if (id === 'profilesScreen') renderProfiles();
+  if (id === 'settingsScreen') renderSettings();
+  if (id === 'homeScreen') renderHome();
+  // Show/hide bottom nav
+  document.getElementById('bottomNav').style.display = id === 'gameScreen' ? 'none' : 'flex';
+}
+
+// ══════════════════════════════════════════
+//  HOME
+// ══════════════════════════════════════════
+function renderHome() {
+  const p = profile();
+  document.getElementById('homeAvatar').textContent = p.avatar;
+  document.getElementById('homeProfileName').textContent = p.name;
+  const xpForLevel = p.level * 500;
+  const xpProgress = (p.xp % 500) / 5;
+  document.getElementById('homeProfileSub').textContent = `Level ${p.level} · ${p.xp} XP`;
+  document.getElementById('homeXpBar').style.width = xpProgress + '%';
+  document.getElementById('hs-games').textContent = p.gamesPlayed;
+  const wr = p.gamesPlayed ? Math.round(p.gamesWon/p.gamesPlayed*100)+'%' : '0%';
+  document.getElementById('hs-wr').textContent = wr;
+  document.getElementById('hs-best').textContent = p.bestTime ? fmtTime(p.bestTime) : '—';
+
+  // Daily
+  const today = new Date().toDateString();
+  if (DATA.daily.lastDate === today && DATA.daily.completed)
+    document.getElementById('dailySub').textContent = '✓ Completed today!';
+  else document.getElementById('dailySub').textContent = 'Play today\'s special puzzle';
+}
+
+function selectMode(btn) {
+  document.querySelectorAll('.mode-card').forEach(c=>c.classList.remove('selected'));
+  btn.classList.add('selected');
+  G.mode = btn.dataset.mode;
+}
+function selectTheme(btn) {
+  document.querySelectorAll('.theme-chip').forEach(c=>c.classList.remove('selected'));
+  btn.classList.add('selected');
+  G.theme = btn.dataset.themeName;
+}
+
+// ══════════════════════════════════════════
+//  DAILY CHALLENGE
+// ══════════════════════════════════════════
+function startDaily() {
+  const today = new Date().toDateString();
+  if (DATA.daily.lastDate === today && DATA.daily.completed) {
+    toast('Already completed today! Come back tomorrow 🌙');
+    return;
+  }
+  // Deterministic seed from date
+  const seed = new Date().toLocaleDateString('en',{year:'numeric',month:'2-digit',day:'2-digit'}).replace(/\//g,'')|0;
+  G.mode = 'medium'; G.theme = Object.keys(THEMES)[seed%8];
+  DATA.daily.lastDate = today;
+  save();
+  startGame(true);
+}
+
+// ══════════════════════════════════════════
+//  GAME SETUP
+// ══════════════════════════════════════════
+function startGame(isDaily=false) {
+  clearInterval(G.timerInterval);
+  const cfg = MODE_CONFIG[G.mode];
+  const symbols = [...THEMES[G.theme]].slice(0, cfg.pairs);
+  const deck = shuffle([...symbols, ...symbols]);
+
+  G.cards = deck.map((sym,i)=>({ id:i, sym, flipped:false, matched:false }));
+  G.flipped = []; G.matched = 0; G.moves = 0; G.wrongMoves = 0;
+  G.score = 0; G.combo = 0; G.maxCombo = 0;
+  G.hints = 3; G.hintsUsed = 0; G.paused = false; G.running = false;
+  G.timerSec = 0; G.memorizing = false; G.isDaily = isDaily;
+
+  renderBoard(cfg);
+  showTab('gameScreen');
+  updateHUD();
+
+  if (cfg.memory) {
+    startMemoryPhase();
+  } else {
+    startTimer();
+  }
+}
+
+function startMemoryPhase() {
+  G.memorizing = true;
+  const banner = document.getElementById('memoryBanner');
+  banner.classList.add('show');
+  // Flip all cards face up
+  document.querySelectorAll('.card').forEach(el=>el.classList.add('flipped'));
+  let countdown = 5;
+  document.getElementById('countdownRing').dataset.t = countdown;
+  const interval = setInterval(()=>{
+    countdown--;
+    document.getElementById('countdownRing').dataset.t = countdown;
+    if (countdown <= 0) {
+      clearInterval(interval);
+      // Flip all back
+      document.querySelectorAll('.card').forEach(el=>el.classList.remove('flipped'));
+      banner.classList.remove('show');
+      G.memorizing = false;
+      startTimer();
+    }
+  }, 1000);
+}
+
+function renderBoard(cfg) {
+  const board = document.getElementById('board');
+  board.className = `board ${G.mode === 'master' ? 'easy' : G.mode}`;
+  board.innerHTML = '';
+  if (G.mode === 'master') board.style.setProperty('--cols','4');
+  G.cards.forEach((c,i) => {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.dataset.idx = i;
+    el.innerHTML = `
+      <div class="card-inner">
+        <div class="card-back"><div class="card-back-pattern"></div><div class="card-back-logo">✦</div></div>
+        <div class="card-face">${c.sym}</div>
+      </div>`;
+    el.addEventListener('click', ()=>flipCard(i));
+    board.appendChild(el);
+  });
+}
+
+function shuffle(arr) {
+  for (let i=arr.length-1; i>0; i--) {
+    const j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+
+// ══════════════════════════════════════════
+//  GAMEPLAY
+// ══════════════════════════════════════════
+function flipCard(idx) {
+  if (G.memorizing || G.paused || !G.running) return;
+  const c = G.cards[idx];
+  if (c.flipped || c.matched) return;
+  if (G.flipped.length >= 2) return;
+
+  c.flipped = true;
+  const el = document.querySelector(`.card[data-idx="${idx}"]`);
+  el.classList.add('flipped');
+  playFlip();
+  G.flipped.push(idx);
+
+  if (G.flipped.length === 2) {
+    G.moves++;
+    updateHUD();
+    const [a,b] = G.flipped;
+    if (G.cards[a].sym === G.cards[b].sym) {
+      // Match!
+      setTimeout(()=>handleMatch(a,b), 400);
+    } else {
+      // No match
+      setTimeout(()=>handleMismatch(a,b), 900);
+    }
+  }
+}
+
+function handleMatch(a,b) {
+  G.cards[a].matched = G.cards[b].matched = true;
+  G.matched++;
+  G.combo++;
+  if (G.combo > G.maxCombo) G.maxCombo = G.combo;
+  const pts = 100 + G.combo * 50;
+  G.score += pts;
+  G.flipped = [];
+
+  [a,b].forEach(idx=>{
+    document.querySelector(`.card[data-idx="${idx}"]`).classList.add('matched');
+  });
+  playMatch();
+  showCombo();
+  updateHUD();
+
+  const cfg = MODE_CONFIG[G.mode];
+  if (G.matched === cfg.pairs) {
+    setTimeout(handleWin, 500);
+  }
+}
+
+function handleMismatch(a,b) {
+  G.wrongMoves++;
+  G.combo = 0;
+  G.cards[a].flipped = G.cards[b].flipped = false;
+  G.flipped = [];
+
+  [a,b].forEach(idx=>{
+    const el = document.querySelector(`.card[data-idx="${idx}"]`);
+    el.classList.add('shake');
+    setTimeout(()=>{ el.classList.remove('flipped','shake'); }, 450);
+  });
+  playWrong();
+  hideCombo();
+  updateHUD();
+}
+
+function showCombo() {
+  if (G.combo < 2) { hideCombo(); return; }
+  const el = document.getElementById('comboEl');
+  el.textContent = `×${G.combo} Combo!`;
+  el.classList.add('show');
+}
+function hideCombo() { document.getElementById('comboEl').classList.remove('show'); }
+
+// ══════════════════════════════════════════
+//  HINT
+// ══════════════════════════════════════════
+function useHint() {
+  if (G.hints <= 0) { toast('No hints left! 🦉'); return; }
+  if (G.flipped.length > 0) { toast('Finish your current flip first!'); return; }
+
+  // Find first unmatched pair
+  const unmatched = G.cards.filter(c=>!c.matched);
+  const sym = unmatched[0]?.sym;
+  const pair = unmatched.filter(c=>c.sym===sym);
+  if (pair.length < 2) return;
+
+  G.hints--;
+  G.hintsUsed++;
+  playHint();
+  document.getElementById('hintCount').textContent = G.hints;
+
+  pair.forEach(c=>{
+    const el = document.querySelector(`.card[data-idx="${c.id}"]`);
+    el.classList.add('hint-glow');
+    setTimeout(()=>el.classList.remove('hint-glow'), 1700);
+  });
+  toast('Hint used! 💡');
+  updateHUD();
+}
+
+// ══════════════════════════════════════════
+//  TIMER
+// ══════════════════════════════════════════
+function startTimer() {
+  G.running = true;
+  G.timerSec = 0;
+  clearInterval(G.timerInterval);
+  G.timerInterval = setInterval(()=>{
+    if (!G.paused) {
+      G.timerSec++;
+      updateHUD();
+    }
+  }, 1000);
+}
+
+function fmtTime(s) {
+  return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+}
+
+// ══════════════════════════════════════════
+//  HUD
+// ══════════════════════════════════════════
+function updateHUD() {
+  document.getElementById('timerVal').textContent = fmtTime(G.timerSec);
+  document.getElementById('movesVal').textContent = G.moves;
+  document.getElementById('scoreVal').textContent = G.score;
+  document.getElementById('hintCount').textContent = G.hints;
+}
+
+// ══════════════════════════════════════════
+//  PAUSE / RESUME
+// ══════════════════════════════════════════
+function pauseGame() {
+  if (!G.running) return;
+  G.paused = true;
+  document.getElementById('pauseOverlay').classList.add('show');
+}
+function resumeGame() {
+  G.paused = false;
+  document.getElementById('pauseOverlay').classList.remove('show');
+}
+function confirmRestart() {
+  pauseGame();
+  // We repurpose pause overlay briefly
+  setTimeout(restartGame, 0); // just restart directly
+}
+function restartGame() {
+  document.getElementById('pauseOverlay').classList.remove('show');
+  document.getElementById('winOverlay').classList.remove('show');
+  clearInterval(G.timerInterval);
+  startGame(G.isDaily);
+}
+function goHome() {
+  clearInterval(G.timerInterval);
+  document.getElementById('pauseOverlay').classList.remove('show');
+  document.getElementById('winOverlay').classList.remove('show');
+  G.running = false;
+  showTab('homeScreen');
+}
+
+// ══════════════════════════════════════════
+//  WIN
+// ══════════════════════════════════════════
+function handleWin() {
+  clearInterval(G.timerInterval);
+  G.running = false;
+  playWin();
+  launchConfetti();
+
+  const cfg = MODE_CONFIG[G.mode];
+  const timeBonus = Math.max(0, cfg.timeBonus - G.timerSec) * 10;
+  const moveBonus = Math.max(0, (cfg.pairs * 2 - G.moves) * 20);
+  const finalScore = G.score + timeBonus + moveBonus;
+  G.score = finalScore;
+
+  // Stars
+  const maxWrong = cfg.pairs;
+  let stars = G.wrongMoves === 0 ? 3 : G.wrongMoves <= Math.floor(maxWrong*.3) ? 2 : 1;
+
+  // Update profile
+  const p = profile();
+  p.gamesPlayed++;
+  p.gamesWon++;
+  p.totalMoves += G.moves;
+  const xpGained = cfg.xp + (stars-1)*50;
+  p.xp += xpGained;
+  p.level = Math.floor(p.xp / 500) + 1;
+  if (!p.bestTime || G.timerSec < p.bestTime) p.bestTime = G.timerSec;
+  p.highScores = [...(p.highScores||[]), { score:finalScore, time:G.timerSec, moves:G.moves, mode:G.mode, date:new Date().toLocaleDateString() }]
+    .sort((a,b)=>b.score-a.score).slice(0,10);
+
+  // Check achievements
+  const gameInfo = { mode:G.mode, time:G.timerSec, wrongMoves:G.wrongMoves, maxCombo:G.maxCombo, hintsUsed:G.hintsUsed };
+  const newBadges = [];
+  ACHIEVEMENTS.forEach(ach=>{
+    if (!p.achievements.includes(ach.id) && ach.check(p, gameInfo)) {
+      p.achievements.push(ach.id);
+      newBadges.push(ach);
+    }
+  });
+
+  // Daily
+  if (G.isDaily) { DATA.daily.completed = true; DATA.daily.lastDate = new Date().toDateString(); }
+  save();
+
+  // Render win screen
+  document.getElementById('winStars').innerHTML = '⭐'.repeat(stars) + '☆'.repeat(3-stars);
+  document.getElementById('winStats').innerHTML = `
+    <div class="win-stat"><div class="v">${fmtTime(G.timerSec)}</div><div class="l">Time</div></div>
+    <div class="win-stat"><div class="v">${G.moves}</div><div class="l">Moves</div></div>
+    <div class="win-stat"><div class="v">${finalScore}</div><div class="l">Score</div></div>
+    <div class="win-stat"><div class="v">+${xpGained}</div><div class="l">XP Gained</div></div>
+  `;
+  const badgesEl = document.getElementById('winBadges');
+  badgesEl.innerHTML = newBadges.length
+    ? newBadges.map(b=>`<div class="badge earned">${b.icon} ${b.name}</div>`).join('')
+    : '';
+
+  document.getElementById('winOverlay').classList.add('show');
+}
+
+// ══════════════════════════════════════════
+//  STATS
+// ══════════════════════════════════════════
+function renderStats() {
+  const p = profile();
+  const avgMoves = p.gamesPlayed ? Math.round(p.totalMoves/p.gamesPlayed) : 0;
+  const wr = p.gamesPlayed ? Math.round(p.gamesWon/p.gamesPlayed*100) : 0;
+
+  document.getElementById('statsGrid').innerHTML = [
+    { icon:'🎮', v:p.gamesPlayed, l:'Games Played' },
+    { icon:'🏆', v:p.gamesWon,    l:'Games Won' },
+    { icon:'📊', v:wr+'%',         l:'Win Rate' },
+    { icon:'👣', v:avgMoves,       l:'Avg Moves' },
+    { icon:'⚡', v:p.bestTime?fmtTime(p.bestTime):'—', l:'Best Time' },
+    { icon:'⭐', v:p.xp,           l:'Total XP' },
+  ].map(s=>`<div class="stat-big"><div class="icon">${s.icon}</div><div class="v">${s.v}</div><div class="l">${s.l}</div></div>`).join('');
+
+  // Leaderboard
+  const lb = document.getElementById('leaderboard');
+  const scores = p.highScores||[];
+  if (!scores.length) { lb.innerHTML='<div style="text-align:center;color:var(--text-sub);padding:20px">No scores yet. Play a game!</div>'; }
+  else {
+    const ranks = ['gold','silver','bronze'];
+    lb.innerHTML = scores.slice(0,5).map((s,i)=>`
+      <div class="lb-row">
+        <div class="lb-rank ${ranks[i]||''}">${['🥇','🥈','🥉'][i]||i+1}</div>
+        <div class="lb-info">
+          <div class="lb-name">${MODE_CONFIG[s.mode]?.label||s.mode} · ${s.moves} moves</div>
+          <div class="lb-meta">${s.date} · ${fmtTime(s.time)}</div>
+        </div>
+        <div class="lb-score">${s.score}</div>
+      </div>`).join('');
+  }
+
+  // All badges
+  const ab = document.getElementById('allBadges');
+  ab.innerHTML = ACHIEVEMENTS.map(a=>`
+    <div class="badge ${p.achievements?.includes(a.id)?'earned':''}">
+      ${a.icon} ${a.name}
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════
+//  PROFILES
+// ══════════════════════════════════════════
+function renderProfiles() {
+  const list = document.getElementById('profilesList');
+  list.innerHTML = DATA.profiles.map((p,i)=>`
+    <div class="profile-card ${i===DATA.activeProfile?'active-profile':''}" onclick="switchProfile(${i})">
+      <div class="avatar" style="font-size:1.2rem">${p.avatar}</div>
+      <div class="profile-detail">
+        <div class="name">${p.name}</div>
+        <div class="meta">Level ${p.level} · ${p.xp} XP · ${p.gamesPlayed} games</div>
+      </div>
+      ${i===DATA.activeProfile?'<div class="profile-check">✓</div>':''}
+    </div>`).join('');
+}
+
+function switchProfile(i) {
+  DATA.activeProfile = i;
+  save();
+  renderProfiles();
+  renderHome();
+  toast(`Switched to ${DATA.profiles[i].name} 👤`);
+}
+
+function addProfile() {
+  if (DATA.profiles.length >= 5) { toast('Max 5 profiles reached!'); return; }
+  const name = prompt('Profile name (max 12 chars):','Player ' + (DATA.profiles.length+1));
+  if (!name) return;
+  const avatars = ['🧠','🦊','🐱','🚀','💎','🎮','🌟','🔥'];
+  DATA.profiles.push({
+    name: name.slice(0,12), avatar: avatars[DATA.profiles.length % avatars.length],
+    xp:0, level:1, gamesPlayed:0, gamesWon:0, bestTime:null, totalMoves:0, achievements:[], highScores:[]
+  });
+  save();
+  renderProfiles();
+}
+
+// ══════════════════════════════════════════
+//  SETTINGS
+// ══════════════════════════════════════════
+function renderSettings() {
+  const s = DATA.settings;
+  setToggle('sfxToggle', s.sfx!==false);
+  setToggle('animToggle', s.anim!==false);
+  setToggle('particlesToggle', s.particles!==false);
+  setToggle('themeToggle', s.dark!==false);
+}
+
+function setToggle(id, on) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.toggle('on', on); }
+}
+
+function toggleSetting(key, el) {
+  el.classList.toggle('on');
+  const on = el.classList.contains('on');
+  DATA.settings[key] = on;
+  G[key] = on;
+  if (key==='particles') { if (!on) ctx2.clearRect(0,0,cvs.width,cvs.height); }
+  save();
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = isDark ? 'light' : 'dark';
+  G.darkMode = !isDark;
+  DATA.settings.dark = !isDark;
+  document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
+  setToggle('themeToggle', !isDark);
+  save();
+}
+
+function toggleSound() {
+  G.sfx = !G.sfx;
+  DATA.settings.sfx = G.sfx;
+  document.getElementById('soundBtn').textContent = G.sfx ? '🔊' : '🔇';
+  setToggle('sfxToggle', G.sfx);
+  save();
+  toast(G.sfx ? 'Sound on 🔊' : 'Sound off 🔇');
+}
+
+function clearData() {
+  if (!confirm('Clear ALL data? This cannot be undone.')) return;
+  localStorage.removeItem('memo_data');
+  DATA = defaultData();
+  save();
+  toast('Data cleared! Fresh start 🌱');
+  renderHome();
+}
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+function init() {
+  // Apply saved settings
+  const s = DATA.settings;
+  G.sfx = s.sfx !== false;
+  G.anim = s.anim !== false;
+  G.particles = s.particles !== false;
+  if (s.dark === false) { document.documentElement.dataset.theme='light'; document.getElementById('themeBtn').textContent='☀️'; }
+  document.getElementById('soundBtn').textContent = G.sfx ? '🔊' : '🔇';
+
+  renderHome();
+  showTab('homeScreen');
+}
+
+init();
+</script>
+</body>
+</html>

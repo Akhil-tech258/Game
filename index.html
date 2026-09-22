@@ -1372,6 +1372,25 @@ function init() {
 
   renderHome();
   showTab('homeScreen');
+
+  // Keyboard Shortcuts (Space/P: Pause/Resume, H: Hint, R: Restart)
+  window.addEventListener('keydown', (e) => {
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+    const gameScreen = document.getElementById('gameScreen');
+    if (gameScreen && gameScreen.classList.contains('active')) {
+      if (e.key === 'p' || e.key === 'P' || e.key === ' ') {
+        e.preventDefault();
+        if (G.paused) resumeGame();
+        else pauseGame();
+      } else if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        useHint();
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        restartGame();
+      }
+    }
+  });
 }
 
 init();

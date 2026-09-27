@@ -470,13 +470,28 @@
   .daily-badge .daily-arrow{margin-left:auto;color:var(--accent);font-size:1.1rem}
 
   /* ── RESPONSIVE ─────────────────────────────────────── */
+  @media(max-width:600px){
+    .board.medium{--cols:4}
+    .board.hard{--cols:4}
+    .board-wrap{padding:8px}
+  }
   @media(max-width:480px){
     .board{gap:6px}
-    .hud{padding:8px 12px;gap:5px}
-    .hud-stat{padding:5px 8px;min-width:48px}
-    .hud-stat .val{font-size:.9rem}
+    .board.medium{--cols:4}
+    .board.hard{--cols:4}
+    .hud{padding:8px 10px;gap:5px;justify-content:space-between}
+    .hud-actions{margin-left:0;width:100%;justify-content:flex-end}
+    .hud-stat{padding:5px 8px;min-width:44px}
+    .hud-stat .val{font-size:.85rem}
     .hud-btn{padding:5px 8px;font-size:.72rem}
     .card-face{font-size:clamp(1rem,5vw,1.8rem)}
+    .daily-badge{padding:8px 12px}
+  }
+  @media(max-width:360px){
+    .board{gap:4px}
+    .board.easy{--cols:4}
+    .hud-stat{min-width:38px;padding:4px 6px}
+    .hud-stat .val{font-size:.78rem}
   }
   @media(min-width:768px){
     .board{max-width:720px;gap:12px}
